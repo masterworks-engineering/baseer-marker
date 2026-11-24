@@ -2,19 +2,18 @@ import re
 from typing import Annotated, List, Tuple
 
 from bs4 import BeautifulSoup
-from PIL import Image
-from marker.remote.compat import LayoutBox, LayoutResult
-from marker.remote.compat import (
-    BlockOCRResult,
-    PageOCRResult,
-    RecognitionPredictor,
-    _detect_repeat_loop,
-)
-
 from marker.builders import BaseBuilder
 from marker.logger import get_logger
 from marker.ocr import IndraRecognitionPredictor, select_recognition_model
 from marker.providers.pdf import PdfProvider
+from marker.remote.compat import (
+    BlockOCRResult,
+    LayoutBox,
+    LayoutResult,
+    PageOCRResult,
+    RecognitionPredictor,
+    _detect_repeat_loop,
+)
 from marker.schema import BlockTypes
 from marker.schema.blocks import BlockId
 from marker.schema.document import Document
@@ -25,6 +24,7 @@ from marker.schema.labels import (
 )
 from marker.schema.polygon import PolygonBox
 from marker.schema.registry import get_block_class
+from PIL import Image
 
 logger = get_logger()
 
@@ -113,13 +113,10 @@ class OcrBuilder(BaseBuilder):
             and str(provider.filepath).lower().endswith(".pdf")
         )
 
-    def can_convert_balanced_pdftext_with_indra(
-        self, provider: PdfProvider
-    ) -> bool:
+    def can_convert_balanced_pdftext_with_indra(self, provider: PdfProvider) -> bool:
         rec_model = self.get_recognition_model()
-        is_mock = (
-            rec_model is not None
-            and type(rec_model).__module__.startswith("unittest.mock")
+        is_mock = rec_model is not None and type(rec_model).__module__.startswith(
+            "unittest.mock"
         )
         return bool(
             self.mode == "balanced"
@@ -135,9 +132,8 @@ class OcrBuilder(BaseBuilder):
     def convert_pdf_with_indra(self, document: Document, provider: PdfProvider):
         rec_model = self.get_recognition_model()
         indra_model: IndraRecognitionPredictor = self.indra_model or rec_model
-        use_vlm_for_ocr = (
-            self.mode == "balanced"
-            and not isinstance(rec_model, IndraRecognitionPredictor)
+        use_vlm_for_ocr = self.mode == "balanced" and not isinstance(
+            rec_model, IndraRecognitionPredictor
         )
         if use_vlm_for_ocr:
             target_pages = [
@@ -199,7 +195,8 @@ class OcrBuilder(BaseBuilder):
                     if html:
                         block.html = html
                         if use_vlm_for_ocr and (
-                            block_type in (BlockTypes.Equation, BlockTypes.TextInlineMath)
+                            block_type
+                            in (BlockTypes.Equation, BlockTypes.TextInlineMath)
                             or "<math" in html
                             or any(
                                 c in html
@@ -589,9 +586,8 @@ class OcrBuilder(BaseBuilder):
 
                     upgrade = False
                     if g_has_table:
-                        if (
-                            "</table>" in (vb.html or "").lower()
-                            and len(vb_txt) >= max(8, len(g_txt) * 0.65)
+                        if "</table>" in (vb.html or "").lower() and len(vb_txt) >= max(
+                            8, len(g_txt) * 0.65
                         ):
                             upgrade = True
                     elif g_has_formula:
@@ -644,9 +640,7 @@ class OcrBuilder(BaseBuilder):
                 vb.reading_order = len(fused_blocks)
                 fused_blocks.append(vb)
 
-            fused_pages.append(
-                PageOCRResult(blocks=fused_blocks, image_bbox=page_bbox)
-            )
+            fused_pages.append(PageOCRResult(blocks=fused_blocks, image_bbox=page_bbox))
 
         return fused_pages
 

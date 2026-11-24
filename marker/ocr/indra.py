@@ -7,8 +7,7 @@ from typing import List, Optional, Sequence, Tuple, Union
 import cv2
 import numpy as np
 from PIL import Image
-from surya.layout.schema import LayoutBox, LayoutResult
-from surya.recognition.schema import BlockOCRResult, PageOCRResult
+from marker.remote.compat import BlockOCRResult, PageOCRResult, LayoutBox, LayoutResult
 
 # Mapping from indra_ocr layout labels to Surya/Marker canonical block labels
 INDRA_TO_SURYA_LABEL = {

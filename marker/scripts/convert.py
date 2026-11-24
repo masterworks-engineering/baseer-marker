@@ -318,7 +318,11 @@ def convert_cli(
     raw_mode = kwargs.get("mode")
     effective_mode = (
         None if raw_mode in (None, "auto") else raw_mode
-    ) or ("balanced" if settings.TORCH_DEVICE_MODEL == "cuda" else "fast")
+    ) or (
+        "balanced"
+        if settings.MODEL_BACKEND == "chandra" or settings.TORCH_DEVICE_MODEL == "cuda"
+        else "fast"
+    )
     if kwargs.get("disable_ocr"):
         effective_mode = "no_ocr"
 
@@ -333,12 +337,12 @@ def convert_cli(
     )
     load_indra = effective_mode not in ("vllm", "surya", "accurate")
 
-    if no_server:
-        # Pure CPU / ONNX mode: no VLM server, pool sized by CPU cores.
+    if no_server or settings.MODEL_BACKEND == "chandra":
+        # CPU modes and remote Chandra do not spawn a local Surya server.
         workers = (
             1
             if user_disabled_mp
-            else (kwargs["workers"] or get_worker_count(no_server=True))
+            else (kwargs["workers"] or get_worker_count(no_server=no_server))
         )
         total_processes = max(1, min(len(files_to_convert), workers))
     else:

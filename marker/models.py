@@ -2,10 +2,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from surya.inference import SuryaInferenceManager
-from surya.recognition import RecognitionPredictor
-
-from marker.ocr import IndraRecognitionPredictor
+from marker.settings import settings
 
 
 def _ensure_surya_cache_writable() -> None:
@@ -56,14 +53,11 @@ def _ensure_surya_cache_writable() -> None:
         pass
 
 
-_ensure_surya_cache_writable()
-
-
 def create_model_dict(
     device=None,
     dtype=None,
     attention_implementation: str | None = None,
-    inference_manager: SuryaInferenceManager | None = None,
+    inference_manager=None,
     inference_backend: str | None = None,
     load_indra: bool = True,
     no_server: bool = False,
@@ -79,6 +73,13 @@ def create_model_dict(
       - ``vllm`` (or ``surya`` / ``accurate``): pure VLM mode — runs full-page
         Surya VLM OCR on every page, skipping pdftext and Indra entirely.
     """
+    if settings.MODEL_BACKEND == "chandra":
+        return _create_chandra_model_dict()
+
+    from surya.inference import SuryaInferenceManager
+    from surya.recognition import RecognitionPredictor
+    from marker.ocr import IndraRecognitionPredictor
+
     _ensure_surya_cache_writable()
     manager = inference_manager or SuryaInferenceManager(method=inference_backend)
     indra = IndraRecognitionPredictor() if load_indra else None
@@ -94,6 +95,27 @@ def create_model_dict(
             if load_indra
             else {}
         ),
+    }
+
+
+def _create_chandra_model_dict() -> dict:
+    """Torch-free predictor set: layout + OCR from a remote Chandra server."""
+    from marker.remote.chandra import (
+        ChandraClient,
+        ChandraLayoutPredictor,
+        ChandraRecognitionPredictor,
+    )
+    from marker.remote.ocr_error import HeuristicOCRErrorPredictor
+    from marker.remote.router import PageRouter
+
+    client = ChandraClient()
+    return {
+        "inference_manager": None,
+        "layout_model": ChandraLayoutPredictor(client),
+        "fast_layout_model": None,  # remote layout; balanced mode only
+        "recognition_model": ChandraRecognitionPredictor(client),
+        "ocr_error_model": HeuristicOCRErrorPredictor(),
+        "page_router": PageRouter() if settings.CHANDRA_USE_PAGE_ROUTER else None,
     }
 
 

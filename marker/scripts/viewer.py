@@ -88,7 +88,11 @@ GROUP_CONTAINER_TYPES = {
 
 
 def _default_device_mode() -> str:
-    return "balanced" if settings.TORCH_DEVICE_MODEL == "cuda" else "fast"
+    return (
+        "balanced"
+        if settings.MODEL_BACKEND == "chandra" or settings.TORCH_DEVICE_MODEL == "cuda"
+        else "fast"
+    )
 
 
 def _parse_page_range_spec(spec: str, total_pages: int, max_pages: int) -> List[int]:

@@ -2,8 +2,8 @@ from collections import Counter
 from typing import Annotated, List
 
 from bs4 import BeautifulSoup
-from surya.layout.schema import LayoutBox, LayoutResult
-from surya.recognition import RecognitionPredictor, _detect_repeat_loop
+from marker.remote.compat import LayoutBox, LayoutResult
+from marker.remote.compat import RecognitionPredictor, _detect_repeat_loop
 
 from marker.ocr import IndraRecognitionPredictor, select_recognition_model
 from marker.processors import BaseProcessor

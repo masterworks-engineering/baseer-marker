@@ -177,3 +177,6 @@ cython_debug/
 .idea/
 
 .vscode/
+
+# Local development notes
+dev-notes_marker/

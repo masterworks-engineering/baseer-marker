@@ -76,7 +76,11 @@ def convert_single_cli(
     raw_mode = kwargs.get("mode")
     effective_mode = (
         None if raw_mode in (None, "auto") else raw_mode
-    ) or ("balanced" if settings.TORCH_DEVICE_MODEL == "cuda" else "fast")
+    ) or (
+        "balanced"
+        if settings.MODEL_BACKEND == "chandra" or settings.TORCH_DEVICE_MODEL == "cuda"
+        else "fast"
+    )
     if kwargs.get("disable_ocr"):
         effective_mode = "no_ocr"
 

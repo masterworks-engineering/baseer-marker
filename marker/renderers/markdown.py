@@ -3,23 +3,16 @@ from collections import defaultdict
 from typing import Annotated, Tuple
 
 import regex
+import six
 from bs4 import NavigableString
 from markdownify import MarkdownConverter, re_whitespace
 from marker.logger import get_logger
-from pydantic import BaseModel
-
 from marker.renderers.html import HTMLRenderer
 from marker.schema import BlockTypes
 from marker.schema.document import Document
+from pydantic import BaseModel
 
 logger = get_logger()
-
-_HYPHENS = r"-—¬"
-_HYPHENS_MATCH_RE = regex.compile(rf".*[\p{{Ll}}|\d][{_HYPHENS}]\s?$", regex.DOTALL)
-_HYPHENS_SPLIT_RE = regex.compile(rf"[{_HYPHENS}]\s?$")
-
-
-_C0_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def escape_dollars(text):
@@ -27,7 +20,6 @@ def escape_dollars(text):
 
 
 def cleanup_text(full_text):
-    full_text = _C0_CONTROL_RE.sub("", full_text)
     full_text = re.sub(r"\n{3,}", "\n\n", full_text)
     full_text = re.sub(r"(\n\s){3,}", "\n\n", full_text)
     return full_text.strip()
@@ -47,6 +39,26 @@ def get_formatted_table_text(element):
             text.append("<br>")
         elif content.name == "math":
             text.append("$" + content.text + "$")
+        elif content.name in ("ul", "ol"):
+            # Pipe-table cells cannot contain block HTML or literal newlines.
+            # Keep each list item visible on its own line, including on a
+            # headerless table fragment continued on the next page.
+            items = []
+            number = int(content.get("start", 1))
+            for item in content.find_all("li", recursive=False):
+                value = get_formatted_table_text(item)
+                if content.name == "ol":
+                    number = int(item.get("value", number))
+                    prefix = f"{number}. "
+                    number += 1
+                else:
+                    prefix = "• "
+                    value = re.sub(r"^[•●▪\-]\s+", "", value)
+                items.append(prefix + value)
+            if items:
+                text.extend(["<br>", "<br>".join(items), "<br>"])
+        elif content.name in ("p", "div"):
+            text.extend(["<br>", get_formatted_table_text(content), "<br>"])
         else:
             content_str = escape_dollars(str(content))
             text.append(content_str)
@@ -59,7 +71,10 @@ def get_formatted_table_text(element):
             full_text += " " + t
         else:
             full_text += t
-    return full_text
+    # Adjacent block elements share a single break; do not add breaks around
+    # the edges of a cell (or an individual list item).
+    full_text = re.sub(r"(?:<br>\s*)+", "<br>", full_text)
+    return re.sub(r"^(?:<br>)+|(?:<br>)+$", "", full_text).strip()
 
 
 class Markdownify(MarkdownConverter):
@@ -91,12 +106,17 @@ class Markdownify(MarkdownConverter):
             return text
 
     def convert_p(self, el, text, parent_tags):
+        hyphens = r"-—¬"
         has_continuation = el.has_attr("class") and "has-continuation" in el["class"]
         if has_continuation:
             block_type = BlockTypes[el["block-type"]]
             if block_type in [BlockTypes.TextInlineMath, BlockTypes.Text]:
-                if _HYPHENS_MATCH_RE.match(text):  # handle hyphenation across pages
-                    return _HYPHENS_SPLIT_RE.split(text)[0]
+                if regex.compile(
+                    rf".*[\p{{Ll}}|\d][{hyphens}]\s?$", regex.DOTALL
+                ).match(
+                    text
+                ):  # handle hypenation across pages
+                    return regex.split(rf"[{hyphens}]\s?$", text)[0]
                 return f"{text} "
             if block_type == BlockTypes.ListGroup:
                 return f"{text}"
@@ -133,25 +153,27 @@ class Markdownify(MarkdownConverter):
         if self.html_tables_in_markdown:
             return "\n\n" + str(el) + "\n\n"
 
-        total_rows = len(el.find_all("tr"))
+        rows = el.find_all("tr")
+        total_rows = len(rows)
         colspans = []
         rowspan_cols = defaultdict(int)
-        for i, row in enumerate(el.find_all("tr")):
+        for i, row in enumerate(rows):
             row_cols = rowspan_cols[i]
             for cell in row.find_all(["td", "th"]):
                 colspan = int(cell.get("colspan", 1))
                 row_cols += colspan
                 for r in range(int(cell.get("rowspan", 1)) - 1):
-                    if i + r + 1 < total_rows:
-                        rowspan_cols[i + r + 1] += (
-                            colspan  # Add the colspan to the next rows, so they get the correct number of columns
-                        )
+                    rowspan_cols[
+                        i + r + 1
+                    ] += colspan  # Add the colspan to the next rows, so they get the correct number of columns
             colspans.append(row_cols)
         total_cols = max(colspans) if colspans else 0
+        if not total_cols:
+            return ""
 
         grid = [[None for _ in range(total_cols)] for _ in range(total_rows)]
 
-        for row_idx, tr in enumerate(el.find_all("tr")):
+        for row_idx, tr in enumerate(rows):
             col_idx = 0
             for cell in tr.find_all(["td", "th"]):
                 # Skip filled positions
@@ -178,9 +200,9 @@ class Markdownify(MarkdownConverter):
                             if r == 0 and c == 0:
                                 grid[row_idx][col_idx] = value
                             else:
-                                grid[row_idx + r][col_idx + c] = (
-                                    ""  # Empty cell due to rowspan/colspan
-                                )
+                                grid[row_idx + r][
+                                    col_idx + c
+                                ] = ""  # Empty cell due to rowspan/colspan
                         except IndexError:
                             # Sometimes the colspan/rowspan predictions can overflow
                             logger.info(
@@ -202,13 +224,20 @@ class Markdownify(MarkdownConverter):
                 "|" + "|".join("-" * (width + 2) for width in col_widths) + "|"
             )
 
-        # Generate markdown rows
+        # GFM always needs a header. A continuation fragment often has only
+        # data cells: supply an empty header instead of promoting its first
+        # row to a bold header and losing its data-row semantics.
         added_header = False
         for i, row in enumerate(grid):
             is_empty_line = all(not cell for cell in row)
             if is_empty_line and not added_header:
                 # Skip leading blank lines
                 continue
+
+            if not added_header and not rows[i].find("th"):
+                markdown_lines.append("|" + "|".join(" " for _ in col_widths) + "|")
+                add_header_line()
+                added_header = True
 
             line = []
             for col_idx, cell in enumerate(row):
@@ -222,10 +251,6 @@ class Markdownify(MarkdownConverter):
                 # Skip empty lines when adding the header row
                 add_header_line()
                 added_header = True
-
-        # Handle one row tables
-        if total_rows == 1:
-            add_header_line()
 
         table_md = "\n".join(markdown_lines)
         return "\n\n" + table_md + "\n\n"
@@ -249,7 +274,7 @@ class Markdownify(MarkdownConverter):
         return text
 
     def process_text(self, el, parent_tags=None):
-        text = str(el) or ""
+        text = six.text_type(el) or ""
 
         # normalize whitespace if we're not inside a preformatted element
         if not el.find_parent("pre"):
@@ -279,7 +304,7 @@ class MarkdownOutput(BaseModel):
 class MarkdownRenderer(HTMLRenderer):
     page_separator: Annotated[
         str, "The separator to use between pages.", "Default is '-' * 48."
-    ] = "-" * 48
+    ] = ("-" * 48)
     inline_math_delimiters: Annotated[
         Tuple[str], "The delimiters to use for inline math."
     ] = ("$", "$")

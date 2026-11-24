@@ -135,12 +135,24 @@ class PdfConverter(BaseConverter):
                 config["mode"] = "no_ocr"
             else:
                 config["mode"] = (
-                    "balanced" if settings.TORCH_DEVICE_MODEL == "cuda" else "fast"
+                    "balanced"
+                    if (
+                        settings.MODEL_BACKEND == "chandra"
+                        or settings.TORCH_DEVICE_MODEL == "cuda"
+                    )
+                    else "fast"
                 )
         elif config["mode"] == "no_ocr":
             config["disable_ocr"] = True
         elif config["mode"] in ("vllm", "surya", "accurate"):
             config["force_ocr"] = True
+        if settings.MODEL_BACKEND == "chandra":
+            if config["mode"] != "balanced":
+                raise ValueError("MODEL_BACKEND=chandra only supports mode='balanced'")
+            if config.get("ocr_backend", "auto") not in (None, "auto"):
+                raise ValueError("MODEL_BACKEND=chandra requires ocr_backend='auto'")
+            if settings.CHANDRA_USE_PAGE_ROUTER:
+                config["cache_pdftext_pages"] = True
         self.config = config
         self.mode = config["mode"]
 

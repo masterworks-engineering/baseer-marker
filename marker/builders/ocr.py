@@ -3,8 +3,8 @@ from typing import Annotated, List, Tuple
 
 from bs4 import BeautifulSoup
 from PIL import Image
-from surya.layout.schema import LayoutBox, LayoutResult
-from surya.recognition import (
+from marker.remote.compat import LayoutBox, LayoutResult
+from marker.remote.compat import (
     BlockOCRResult,
     PageOCRResult,
     RecognitionPredictor,

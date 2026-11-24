@@ -30,6 +30,33 @@ Marker converts documents to markdown, JSON, chunks, and HTML quickly and accura
 - Optionally boost accuracy with LLMs (and your own prompt)
 - Works on GPU, CPU, or MPS
 
+## Remote Chandra backend
+
+The `ashf/marker-chandra` backend is available here with `MODEL_BACKEND=chandra`.
+It sends layout and OCR requests to an existing OpenAI-compatible Chandra OCR 2
+server; the Marker client does not need Torch, Transformers, or Surya installed.
+
+```bash
+uv sync
+MODEL_BACKEND=chandra \
+CHANDRA_BASE_URL=http://localhost:8000/v1 \
+CHANDRA_MODEL_NAME=datalab-to/chandra-ocr-2 \
+uv run marker_single document.pdf --mode balanced
+```
+
+Chandra supports `balanced` mode with `ocr_backend=auto`; it is also selected
+when no mode is specified. The target repository's Indra modes remain available
+with the default `MODEL_BACKEND=surya`; install that backend using
+`uv sync --extra surya` (or `pip install 'marker-pdf[surya]'`).
+
+Set `CHANDRA_USE_PAGE_ROUTER=true` to enable the additional per-page text-quality,
+font-mapping, image, and ruled-table checks. The converter retains raw pdftext
+pages automatically when routing is enabled. Other settings are
+`CHANDRA_API_KEY` (default `EMPTY`), `CHANDRA_MAX_TOKENS` (8000),
+`CHANDRA_TIMEOUT` (600 seconds), `CHANDRA_MAX_RETRIES` (2),
+`CHANDRA_MAX_WORKERS` (4), and `CHANDRA_KEEP_FIGURE_HTML` (false).
+The same backend selection applies to batch conversion, the API, and the viewer.
+
 ## Try Datalab's Managed Platform
 
 Our managed platform uses [Chandra](https://github.com/datalab-to/chandra), our latest open source model, and other models — higher accuracy than Marker, with opt-in zero data retention, SOC 2 Type 2, and custom BAAs.

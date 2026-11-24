@@ -1,12 +1,13 @@
 from typing import Annotated, Any, List
 
 import numpy as np
-from surya.layout.schema import LayoutResult, LayoutBox
+from marker.remote.compat import LayoutResult, LayoutBox
 
 from marker.builders import BaseBuilder
 from marker.logger import get_logger
 from marker.ocr import IndraRecognitionPredictor
 from marker.providers.pdf import PdfProvider
+from marker.settings import settings
 from marker.schema import BlockTypes
 from marker.schema.document import Document
 from marker.schema.groups.page import PageGroup
@@ -93,7 +94,11 @@ class LayoutBuilder(BaseBuilder):
         elif self.mode in ("vllm", "surya", "accurate"):
             self.force_ocr = True
 
-        if indra_model is None and self.mode not in ("vllm", "surya", "accurate"):
+        if (
+            settings.MODEL_BACKEND != "chandra"
+            and indra_model is None
+            and self.mode not in ("vllm", "surya", "accurate")
+        ):
             if isinstance(layout_model, IndraRecognitionPredictor):
                 indra_model = layout_model
             elif isinstance(fast_layout_model, IndraRecognitionPredictor):
@@ -103,6 +108,8 @@ class LayoutBuilder(BaseBuilder):
         self.indra_model = indra_model
 
     def use_fast_layout(self):
+        if self.fast_layout_model is None:
+            return False
         return self.mode in ("fast", "indra", "no_ocr") or self.disable_ocr
 
     def get_layout_model(self):
@@ -151,7 +158,8 @@ class LayoutBuilder(BaseBuilder):
             model is not None
             and not isinstance(model, IndraRecognitionPredictor)
             and (
-                type(model).__module__.startswith("unittest.mock")
+                settings.MODEL_BACKEND == "chandra"
+                or type(model).__module__.startswith("unittest.mock")
                 or self.mode in ("vllm", "surya", "accurate")
             )
         ):

@@ -5,13 +5,7 @@ from typing import Annotated, Any, List, Optional, Tuple
 import cv2
 import numpy as np
 
-
-@dataclass
-class OCRErrorDetectionResult:
-    texts: List[str]
-    labels: List[str]
-    scores: Optional[List[float]] = None
-
+from marker.logger import get_logger
 from marker.builders import BaseBuilder
 from marker.providers import ProviderOutput, ProviderPageLines
 from marker.providers.pdf import PdfProvider
@@ -20,7 +14,18 @@ from marker.schema.document import Document
 from marker.schema.groups.page import PageGroup
 from marker.settings import settings
 from marker.util import matrix_intersection_area
-from marker.utils.image import is_blank_bbox, is_blank_image
+from marker.utils.image import is_blank_bbox
+
+
+
+@dataclass
+class OCRErrorDetectionResult:
+    texts: List[str]
+    labels: List[str]
+    scores: Optional[List[float]] = None
+
+
+logger = get_logger()
 
 _C0_CONTROL_RE = re.compile(r"[\x01-\x08\x0b\x0e-\x1f]")
 _PUA_REPLACEMENT_RE = re.compile(r"[\ue000-\uf8ff\ufffd]")
@@ -227,12 +232,14 @@ class LineBuilder(BaseBuilder):
         self,
         ocr_error_model: Any = None,
         config=None,
+        page_router=None,
     ):
         super().__init__(config)
         if self.mode == "no_ocr":
             self.disable_ocr = True
 
         self.ocr_error_model = ocr_error_model
+        self.page_router = page_router
 
     def __call__(self, document: Document, provider: PdfProvider):
         provider_lines = self.get_all_lines(document, provider)
@@ -299,6 +306,8 @@ class LineBuilder(BaseBuilder):
         if self.disable_ocr:
             labels = ["good"] * len(document.pages)
             scores = [0.0] * len(document.pages)
+        elif self.page_router is not None:
+            labels, scores = self.route_pages(document, provider)
         else:
             ocr_error_detection_results = self.ocr_error_detection(
                 document.pages, provider.page_lines
@@ -322,6 +331,7 @@ class LineBuilder(BaseBuilder):
         if (
             not self.disable_ocr
             and not use_mock_model
+            and settings.MODEL_BACKEND != "chandra"
             and getattr(provider, "filepath", None)
             and str(provider.filepath).lower().endswith(".pdf")
         ):
@@ -394,6 +404,23 @@ class LineBuilder(BaseBuilder):
 
         return page_lines
 
+    def route_pages(self, document: Document, provider: PdfProvider):
+        """Page-level good/bad verdicts from the injected router."""
+        raw_pages = getattr(provider, "raw_pdftext_pages", {})
+        labels, scores = [], []
+        for page in document.pages:
+            decision = self.page_router.decide(
+                provider.filepath, page.page_id, raw_pages.get(page.page_id)
+            )
+            bad = decision.route != "pdftext"
+            if bad:
+                logger.info(
+                    f"Page {page.page_id} routed to OCR: {','.join(decision.reasons)}"
+                )
+            labels.append("bad" if bad else "good")
+            scores.append(1.0 if bad else 0.0)
+        return labels, scores
+
     def ocr_error_detection(
         self, pages: List[PageGroup], provider_page_lines: ProviderPageLines
     ):
@@ -413,11 +440,7 @@ class LineBuilder(BaseBuilder):
         labels = ["bad"] * len(pages)
         scores = [1.0] * len(pages)
         if page_texts:
-            use_mock_model = (
-                self.ocr_error_model is not None
-                and type(self.ocr_error_model).__module__.startswith("unittest.mock")
-            )
-            if not use_mock_model:
+            if self.ocr_error_model is None:
                 for idx, txt in zip(non_empty_indices, page_texts):
                     sc = score_text_garble(txt)
                     labels[idx] = "bad" if sc >= 0.5 else "good"
@@ -643,11 +666,7 @@ class LineBuilder(BaseBuilder):
                     garbled_candidates.append((block, text))
 
         if garbled_candidates:
-            use_mock_model = (
-                self.ocr_error_model is not None
-                and type(self.ocr_error_model).__module__.startswith("unittest.mock")
-            )
-            if not use_mock_model:
+            if self.ocr_error_model is None:
                 for block, txt in garbled_candidates:
                     if score_text_garble(txt) >= 0.5:
                         block.text_extraction_method = "surya"

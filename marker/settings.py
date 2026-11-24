@@ -56,6 +56,19 @@ class Settings(BaseSettings):
     # LLM
     GOOGLE_API_KEY: Optional[str] = ""
 
+    # Model backend: "surya" (the optional surya-ocr extra) or
+    # "chandra" (fork: layout + OCR from a remote Chandra OCR 2 server, no torch)
+    MODEL_BACKEND: str = "surya"
+    CHANDRA_BASE_URL: str = "http://localhost:8000/v1"
+    CHANDRA_MODEL_NAME: str = "datalab-to/chandra-ocr-2"
+    CHANDRA_API_KEY: str = "EMPTY"
+    CHANDRA_MAX_TOKENS: int = 8000  # must fit the server's max_model_len with the image
+    CHANDRA_TIMEOUT: float = 600.0
+    CHANDRA_MAX_RETRIES: int = 2
+    CHANDRA_MAX_WORKERS: int = 4  # concurrent requests to the server
+    CHANDRA_USE_PAGE_ROUTER: bool = False  # opt-in: baseer's per-page OCR routing instead of marker's own check
+    CHANDRA_KEEP_FIGURE_HTML: bool = False  # keep Chandra's figure/diagram descriptions
+
     # General models
     TORCH_DEVICE: Optional[str] = (
         None  # Device preference override ("cuda", "mps", or "cpu")

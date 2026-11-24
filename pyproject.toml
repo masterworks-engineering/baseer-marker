@@ -18,12 +18,13 @@ dependencies = [
     "tqdm>=4.66.1,<5",
     "ftfy>=6.1.1,<7",
     "rapidfuzz>=3.8.1,<4",
-    "surya-ocr>=0.24.0,<0.25.0",
     "indra-ocr>=1.1.2,<2",
     "onnxruntime<=1.23.2; python_version < '3.11'",
     "regex>=2024.4.28",
     "pdftext>=0.7.0,<0.8.0",
     "markdownify>=1.1.0,<2",
+    "chandra-ocr>=0.2.0",
+    "opencv-python-headless>=4.11.0.86,<5",
     "click>=8.2.0,<9",
     "markdown2>=2.5.2,<3",
     "filetype>=1.2.0,<2",
@@ -37,6 +38,8 @@ dependencies = [
 Repository = "https://github.com/datalab-to/marker"
 
 [project.optional-dependencies]
+# Local/server Surya backend (MODEL_BACKEND=surya).
+surya = ["surya-ocr>=0.24.0,<0.25.0"]
 full = [
     "mammoth>=1.9.0,<2",
     "openpyxl>=3.1.5,<4",
